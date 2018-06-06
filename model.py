@@ -1,9 +1,10 @@
 from __future__ import print_function
+from __future__ import division
 
 import numpy as np
 
 import keras
-from keras.layers import Dense, Dropout
+from keras.layers import Dense, Dropout, Masking, Average
 from keras.layers import LSTM, TimeDistributed, Bidirectional
 from keras.layers import GlobalAveragePooling1D
 from keras.models import Sequential
@@ -18,10 +19,13 @@ class emoLSTM():
     
     def __init__(self):
         self.model = Sequential()
-        self.model.add(TimeDistributed(Dense(512, activation='relu'), input_shape=(None, 40)))
+        self.model.add(Masking(mask_value=0.0, input_shape=(None, 40)))
+        self.model.add(TimeDistributed(Dense(512, activation='relu')))#, input_shape=(None, 40)))
         self.model.add(Dropout(0.5))
         self.model.add(Bidirectional(LSTM(128, return_sequences=True, dropout=0.5)))
+        #TODO: Fix the global average pooling layer to support masking
         self.model.add(GlobalAveragePooling1D())
+        # self.model.add(Average())
         self.model.add(Dense(6, activation='softmax'))
 
         self.model.compile(loss='categorical_crossentropy', 
@@ -30,21 +34,23 @@ class emoLSTM():
                             weighted_metrics=['accuracy'])
         
     def fit(self, x_train, y_train,
-            batch_size=1, 
+            batch_size=32, 
             epochs=25,
             validation_data=None, class_weight=None):
         
-        steps_per_epoch = len(x_train)/batch_size
         x_val, y_val, val_sample_weight = validation_data
-        validation_steps = len(x_val)/batch_size
+        steps_per_epoch = len(x_train) // batch_size
+        # validation_steps = len(x_val) #// batch_size
         # number_of_batches = len(x_train)
-        
-        self.model.fit_generator(data_generator(x_train, y_train), 
-                       steps_per_epoch=steps_per_epoch,
-                       epochs=epochs, 
-                       validation_data=val_generator(x_val, y_val, val_sample_weight),
-                       validation_steps=validation_steps,
-                       class_weight=class_weight)
+        self.model.fit_generator(
+                        bucket_generator(x_train, y_train, batch_size=batch_size), 
+                        steps_per_epoch=steps_per_epoch,
+                        epochs=epochs, 
+                        class_weight=class_weight,
+                        validation_data=(pad_sequences(x_val), y_val, val_sample_weight)
+                        )
+                       #  validation_steps=validation_steps,
+                       # )
 
         # score = self.model.evaluate_generator(val_generator(x_val, y_val, val_sample_weight), steps=validation_steps)
         # print ("Test Loss: {}, Test UA: {}, Test WA: {}".format(score[0], score[1], score[2]))
@@ -62,19 +68,40 @@ class emoLSTM():
         return self.model.predict(x_test)
 
 
-def data_generator(x_train, y_train):
+# def data_generator(x_train, y_train):
+#     while True:
+#         x_train, y_train = shuffle(x_train, y_train)
+#         for x,y in zip(x_train, y_train):
+#             yield x[None,:], y[None,:]
+
+def bucket_generator(x_train, y_train, batch_size=32):
+    num_train = len(x_train)
     while True:
+        counter = 0
         x_train, y_train = shuffle(x_train, y_train)
-        for x,y in zip(x_train, y_train):
-            yield x[None,:], y[None,:]
+        while (counter+batch_size) < num_train:
+            x_batch = pad_sequences(x_train[counter:counter+batch_size])
+            y_batch = y_train[counter:counter+batch_size]
+            print (x_batch.shape, y_batch.shape)
+            counter = counter + batch_size
+            yield x_batch, y_batch
 
+def pad_sequences(mini_batch):
+    batch = np.copy(mini_batch)
+    max_len = max([example.shape[0] for example in batch])
 
-def val_generator(x_val, y_val, val_sample_weight):
-    while True:
-        x_val, y_val, val_sample_weight = shuffle(x_val, y_val, val_sample_weight)
-        for x,y,w in zip(x_val, y_val, val_sample_weight):
-            # print (x[None,:].shape, y[None,:].shape, w.shape)
-            yield x[None,:], y[None,:], w
+    for i,example in enumerate(batch):
+        seq_len = example.shape[0]
+        if seq_len != max_len:
+            batch[i] = np.vstack([example, np.zeros((max_len - seq_len, 40), dtype=example.dtype)])
+    return np.dstack(batch).transpose(2,0,1)
+
+# def val_generator(x_val, y_val, val_sample_weight):
+#     while True:
+#         x_val, y_val, val_sample_weight = shuffle(x_val, y_val, val_sample_weight)
+#         for x,y,w in zip(x_val, y_val, val_sample_weight):
+#             # print (x[None,:].shape, y[None,:].shape, w.shape)
+#             yield x[None,:], y[None,:], w
 
 
 if __name__ == "__main__":
@@ -95,7 +122,7 @@ if __name__ == "__main__":
     y_train = keras.utils.to_categorical(y_train)
     y_val = keras.utils.to_categorical(y_val)
 
-    enn.fit(x_train, y_train, 
-            batch_size=1, 
+    enn.fit(x_train[:100], y_train[:100], 
+            batch_size=32, 
             epochs=2,
-            validation_data=(x_val, y_val, val_sample_weight), class_weight=class_weight)
+            validation_data=(x_val[:10], y_val[:10], val_sample_weight[:10]), class_weight=class_weight)
