@@ -13,6 +13,7 @@ from keras import backend as K
 from keras.engine import InputSpec
 from keras.engine.topology import Layer
 from keras import optimizers
+from keras.callbacks import ModelCheckpoint, EarlyStopping
 
 from sklearn.utils import class_weight as clw
 from sklearn.utils import shuffle
@@ -89,6 +90,29 @@ class emoLSTM():
                             metrics=['accuracy'],
                             weighted_metrics=['accuracy'])
 
+        # Model snapshotting and early stopping
+        file_path = 'models/emorec_model_' \
+                        + time.strftime("%m%d_%H%M%S") \
+                        + ".{epoch:02d}-{val_weighted_acc:.4f}" \
+                        + '.h5'
+
+        self.callback_list = [
+            EarlyStopping(
+                monitor='val_weighted_acc',
+                patience=10,
+                verbose=1,
+                mode='max'
+            ),
+            ModelCheckpoint(
+                filepath=file_path,
+                monitor='val_weighted_acc',
+                save_best_only='True',
+                verbose=1,
+                mode='max'
+            )
+        ]
+
+
 
     def fit(self, x_train, y_train,
             batch_size=32, 
@@ -99,12 +123,14 @@ class emoLSTM():
         steps_per_epoch = ceil(len(x_train) / batch_size)
         # validation_steps = len(x_val) #// batch_size
         # number_of_batches = len(x_train)
+        checkpointer = ModelCheckpoint(filepath='/tmp/weights.hdf5', verbose=1, save_best_only=True)
         self.model.fit_generator(
                         generator=intel_bucket_generator(x_train, y_train, batch_size=batch_size), 
                         steps_per_epoch=steps_per_epoch,
                         epochs=epochs, 
                         class_weight=class_weight,
-                        validation_data=(pad_sequences(x_val), y_val, val_sample_weight)
+                        validation_data=(pad_sequences(x_val), y_val, val_sample_weight),
+                        callbacks=self.callback_list
                         )
                        #  validation_steps=validation_steps,
                        # )
@@ -112,13 +138,13 @@ class emoLSTM():
         # score = self.model.evaluate_generator(val_generator(x_val, y_val, val_sample_weight), steps=validation_steps)
         # print ("Test Loss: {}, Test UA: {}, Test WA: {}".format(score[0], score[1], score[2]))
         
-        model_name = 'emorec_model_'+time.strftime("%m%d_%H%M%S")
-        save_dir = 'models'
-        if not os.path.isdir(save_dir):
-            os.makedirs(save_dir)
-        model_path = os.path.join(save_dir, model_name+'.h5')
-        self.model.save(model_path)
-        print('Saved trained model at %s ' % model_path)
+        # model_name = 'emorec_model_'+time.strftime("%m%d_%H%M%S")
+        # save_dir = 'models'
+        # if not os.path.isdir(save_dir):
+        #     os.makedirs(save_dir)
+        # model_path = os.path.join(save_dir, model_name+'.h5')
+        # self.model.save(model_path)
+        # print('Saved trained model at %s ' % model_path)
         
 
     def predict(self, x_test):
@@ -145,7 +171,7 @@ def intel_bucket_generator(x_train, y_train, batch_size=64):
     x_train = x_train[sort_indices]
     y_train = y_train[sort_indices]
     #check if it worked
-    print (x_train[0].shape[0], x_train[-1].shape[0])
+    # print (x_train[0].shape[0], x_train[-1].shape[0])
 
     while True:
         counter = 0
@@ -153,7 +179,7 @@ def intel_bucket_generator(x_train, y_train, batch_size=64):
             x_batch = pad_sequences(x_train[counter:counter+batch_size])
             y_batch = y_train[counter:counter+batch_size]
             x_batch, y_batch = shuffle(x_batch, y_batch)
-            print (x_batch.shape[1])
+            # print (x_batch.shape[1])
             counter = counter + batch_size
             yield x_batch, y_batch
 
