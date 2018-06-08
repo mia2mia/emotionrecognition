@@ -3,6 +3,7 @@ import os
 from audio_features import *
 from sklearn.utils import shuffle
 
+
 def parse_args():
     """Returns dictionary containing CLI arguments"""
     ap = argparse.ArgumentParser()
@@ -51,7 +52,14 @@ if __name__ == '__main__':
 
     # sessions = ['Session1', 'Session2', 'Session3', 'Session4']
     sessions = ['Session5']
-    target_emotions = {'ang':0, 'hap':1, 'exc':2, 'sad':3, 'fru':4, 'neu':5,}
+    target_emotions = {
+                        'ang':0, 
+                        'hap':1, 
+                        'exc':2, 
+                        'sad':3, 
+                        'fru':4, 
+                        'neu':5,
+                        }
 
     # x_train = []
     # y_train = []
