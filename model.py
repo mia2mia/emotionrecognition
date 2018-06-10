@@ -64,7 +64,7 @@ class emoLSTM():
     def build_model(self):
         self.model = Sequential()
         # Masking layer to ignore the 0 padded values
-        self.model.add(Masking(mask_value=0.0, input_shape=(None, 40)))
+        self.model.add(Masking(mask_value=0.0, input_shape=(None, 61)))
 
         # Dense layers for LLD learning
         self.model.add(TimeDistributed(Dense(512, activation='relu')))#, input_shape=(None, 40)))
@@ -84,7 +84,7 @@ class emoLSTM():
         self.model.add(Dense(6, activation='softmax'))
 
         # Loss Function and Metrics
-        adam = optimizers.Adam(lr=0.01)
+        adam = optimizers.Adam(lr=0.001)
         self.model.compile(loss='categorical_crossentropy', 
                             optimizer=adam, 
                             metrics=['accuracy'],
@@ -93,7 +93,7 @@ class emoLSTM():
         # Model snapshotting and early stopping
         file_path = 'models/emorec_model_' \
                         + time.strftime("%m%d_%H%M%S") \
-                        + ".{epoch:02d}-{val_weighted_acc:.4f}" \
+                        + ".val-acc-{val_weighted_acc:.4f}" \
                         + '.h5'
 
         self.callback_list = [
@@ -123,7 +123,6 @@ class emoLSTM():
         steps_per_epoch = ceil(len(x_train) / batch_size)
         # validation_steps = len(x_val) #// batch_size
         # number_of_batches = len(x_train)
-        checkpointer = ModelCheckpoint(filepath='/tmp/weights.hdf5', verbose=1, save_best_only=True)
         self.model.fit_generator(
                         generator=intel_bucket_generator(x_train, y_train, batch_size=batch_size), 
                         steps_per_epoch=steps_per_epoch,
@@ -187,36 +186,37 @@ def intel_bucket_generator(x_train, y_train, batch_size=64):
 def pad_sequences(mini_batch):
     batch = np.copy(mini_batch)
     max_len = max([example.shape[0] for example in batch])
-
+    feat_len = batch[0].shape[1]
     for i,example in enumerate(batch):
         seq_len = example.shape[0]
         if seq_len != max_len:
-            batch[i] = np.vstack([example, np.zeros((max_len - seq_len, 40), dtype=example.dtype)])
+            batch[i] = np.vstack([example, np.zeros((max_len - seq_len, feat_len), dtype=example.dtype)])
     return np.dstack(batch).transpose(2,0,1)
 
 
 if __name__ == "__main__":
     enn = emoLSTM()
     enn.model.summary()
-    x_train = np.load('dataset/x_train.npy')
-    y_train = np.load('dataset/y_train.npy')
-    x_val = np.load('dataset/x_val.npy')
-    y_val = np.load('dataset/y_val.npy')
+    x_train = np.load('data/x_train.npy')
+    y_train = np.load('data/y_train.npy')
+    x_val = np.load('data/x_val.npy')
+    y_val = np.load('data/y_val.npy')
 
     # compute class weights due to imbalanced data. 
     class_weight = clw.compute_class_weight('balanced', np.unique(y_train), y_train)
     class_weight = dict(enumerate(class_weight))
-    val_sample_weight = np.array([class_weight[cls] for cls in y_val])
+    val_class_weight = clw.compute_class_weight('balanced', np.unique(y_val), y_val)
+    val_class_weight = dict(enumerate(val_class_weight))
+    val_sample_weight = np.array([val_class_weight[cls] for cls in y_val])
     # val_sample_weight = val_sample_weight.reshape(-1,1)
-
     # convert training labels to one hot vectors.
     y_train = keras.utils.to_categorical(y_train)
     y_val = keras.utils.to_categorical(y_val)
 
-    enn.fit(x_train[:1000], y_train[:1000], 
-            batch_size=64, 
-            epochs=2,
-            validation_data=(x_val[:10], y_val[:10], val_sample_weight[:10]), 
+    enn.fit(x_train, y_train, 
+            batch_size=128, 
+            epochs=100,
+            validation_data=(x_val, y_val, val_sample_weight), 
             class_weight=class_weight)
 
 

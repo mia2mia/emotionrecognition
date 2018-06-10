@@ -12,6 +12,8 @@ from keras.models import Sequential, load_model
 from keras import backend as K
 from keras.engine import InputSpec
 from keras.engine.topology import Layer
+from keras import optimizers
+from keras.callbacks import ModelCheckpoint, EarlyStopping
 
 from sklearn.utils import class_weight as clw
 from sklearn.utils import shuffle
@@ -20,8 +22,6 @@ import time
 import os
 from math import ceil
 
-from audio_features import extract_logmel
-
 
 class MeanPool(Layer):
     def __init__(self, **kwargs):
@@ -29,9 +29,11 @@ class MeanPool(Layer):
         self.supports_masking = True
         self.input_spec = InputSpec(ndim=3)
 
+
     def compute_mask(self, input, input_mask=None):
       # do not pass the mask to the next layers
       return None
+
 
     def call(self, x, mask=None):
         if mask is not None:
@@ -43,6 +45,7 @@ class MeanPool(Layer):
             mask = tf.transpose(mask, [0,2,1])
             x = x * mask
         return K.sum(x, axis=1) / K.sum(mask, axis=1)
+
 
     def compute_output_shape(self, input_shape):
         # remove temporal dimension
@@ -60,19 +63,55 @@ class emoLSTM():
 
     def build_model(self):
         self.model = Sequential()
-        self.model.add(Masking(mask_value=0.0, input_shape=(None, 40)))
+        # Masking layer to ignore the 0 padded values
+        self.model.add(Masking(mask_value=0.0, input_shape=(None, 61)))
+
+        # Dense layers for LLD learning
         self.model.add(TimeDistributed(Dense(512, activation='relu')))#, input_shape=(None, 40)))
         self.model.add(Dropout(0.5))
+        self.model.add(TimeDistributed(Dense(512, activation='relu')))
+        self.model.add(Dropout(0.5))
+
+        # Bidirectional LSTM Layer
         self.model.add(Bidirectional(LSTM(128, return_sequences=True, dropout=0.5)))
+
+        # Average Pooling Layer for combining all time steps' outputs
         # self.model.add(GlobalAveragePooling1D())
         self.model.add(MeanPool())
         # self.model.add(Average())
+        
+        # Final Classification Layer with Softmax activation
         self.model.add(Dense(6, activation='softmax'))
 
+        # Loss Function and Metrics
+        adam = optimizers.Adam(lr=0.001)
         self.model.compile(loss='categorical_crossentropy', 
-                            optimizer='adam', 
+                            optimizer=adam, 
                             metrics=['accuracy'],
                             weighted_metrics=['accuracy'])
+
+        # Model snapshotting and early stopping
+        file_path = 'models/emorec_model_' \
+                        + time.strftime("%m%d_%H%M%S") \
+                        + ".{epoch:02d}-{val_weighted_acc:.4f}" \
+                        + '.h5'
+
+        self.callback_list = [
+            EarlyStopping(
+                monitor='val_weighted_acc',
+                patience=10,
+                verbose=1,
+                mode='max'
+            ),
+            ModelCheckpoint(
+                filepath=file_path,
+                monitor='val_weighted_acc',
+                save_best_only='True',
+                verbose=1,
+                mode='max'
+            )
+        ]
+
 
 
     def fit(self, x_train, y_train,
@@ -85,40 +124,44 @@ class emoLSTM():
         # validation_steps = len(x_val) #// batch_size
         # number_of_batches = len(x_train)
         self.model.fit_generator(
-                        bucket_generator(x_train, y_train, batch_size=batch_size), 
+                        generator=intel_bucket_generator(x_train, y_train, batch_size=batch_size), 
                         steps_per_epoch=steps_per_epoch,
                         epochs=epochs, 
                         class_weight=class_weight,
-                        validation_data=(pad_sequences(x_val), y_val, val_sample_weight)
+                        validation_data=(pad_sequences(x_val), y_val, val_sample_weight),
+                        callbacks=self.callback_list
                         )
                        #  validation_steps=validation_steps,
                        # )
 
-        # score = self.model.evaluate_generator(val_generator(x_val, y_val, val_sample_weight), steps=validation_steps)
+    
+    def evaluate(self, x_test, y_test, sample_weight=None):
+        score = self.model.evaluate(x=pad_sequences(x_test), y=y_test, sample_weight=sample_weight)
         # print ("Test Loss: {}, Test UA: {}, Test WA: {}".format(score[0], score[1], score[2]))
-        
-        model_name = 'emorec_model_'+time.strftime("%m%d_%H%M%S")
-        save_dir = 'models'
-        if not os.path.isdir(save_dir):
-            os.makedirs(save_dir)
-        model_path = os.path.join(save_dir, model_name+'.h5')
-        self.model.save(model_path)
-        print('Saved trained model at %s ' % model_path)
+        print (score)
+        print (self.model.metrics_names)
         
 
     def predict(self, x_test):
-        return self.model.predict(pad_sequences(x_test))
+        return self.model.predict(x_test)
 
 
-def bucket_generator(x_train, y_train, batch_size=32):
+def intel_bucket_generator(x_train, y_train, batch_size=64):
     num_train = len(x_train)
+    seq_lens = [example.shape[0] for example in x_train]
+    sort_indices = np.argsort(seq_lens)
+    x_train = x_train[sort_indices]
+    y_train = y_train[sort_indices]
+    #check if it worked
+    # print (x_train[0].shape[0], x_train[-1].shape[0])
+
     while True:
         counter = 0
-        x_train, y_train = shuffle(x_train, y_train)
         while counter < num_train:
             x_batch = pad_sequences(x_train[counter:counter+batch_size])
             y_batch = y_train[counter:counter+batch_size]
-            # print (x_batch.shape, y_batch.shape)
+            x_batch, y_batch = shuffle(x_batch, y_batch)
+            # print (x_batch.shape[1])
             counter = counter + batch_size
             yield x_batch, y_batch
 
@@ -126,29 +169,53 @@ def bucket_generator(x_train, y_train, batch_size=32):
 def pad_sequences(mini_batch):
     batch = np.copy(mini_batch)
     max_len = max([example.shape[0] for example in batch])
-
+    feat_len = batch[0].shape[1]
     for i,example in enumerate(batch):
         seq_len = example.shape[0]
         if seq_len != max_len:
-            batch[i] = np.vstack([example, np.zeros((max_len - seq_len, 40), dtype=example.dtype)])
+            batch[i] = np.vstack([example, np.zeros((max_len - seq_len, feat_len), dtype=example.dtype)])
     return np.dstack(batch).transpose(2,0,1)
 
 
 if __name__ == "__main__":
     labels = {0:'ang', 1:'hap', 2:'exc', 3:'sad', 4:'fru', 5:'neu'}
-    enn = emoLSTM('models/emorec_model_0606_091622.h5')
+    enn = emoLSTM('models/emorec_model_0608_164409.31-0.3824.h5')
     enn.model.summary()
 
-    # x_val = np.load('dataset/x_val.npy')
-    # y_val = np.load('dataset/y_val.npy')
+    x_train = np.load('data/x_train.npy')
+    y_train = np.load('data/y_train.npy')
+    x_val = np.load('data/x_val.npy')
+    y_val = np.load('data/y_val.npy')
 
-    wav_path = 'samples/Ses05F_impro03.wav'
-    logmel = extract_logmel(wav_path)
-    print (logmel.shape)
-    y_pred = enn.predict(logmel[None,:])
-    print ()
-    print("Predicted label: {}, {}".format(np.argmax(y_pred, axis=1), labels[np.argmax(y_pred, axis=1)[0]]))
+    # compute class weights due to imbalanced data. 
+    class_weight = clw.compute_class_weight('balanced', np.unique(y_train), y_train)
+    class_weight = dict(enumerate(class_weight))
+    val_class_weight = clw.compute_class_weight('balanced', np.unique(y_val), y_val)
+    val_class_weight = dict(enumerate(val_class_weight))
+    val_sample_weight = np.array([val_class_weight[cls] for cls in y_val])
+    # val_sample_weight = val_sample_weight.reshape(-1,1)
 
+    # convert training labels to one hot vectors.
+    y_train = keras.utils.to_categorical(y_train)
+    y_val = keras.utils.to_categorical(y_val)
+
+
+    seq_lens = [example.shape[0] for example in x_val]
+    sort_indices = np.argsort(seq_lens)
+    x_val = x_val[sort_indices]
+    y_val = y_val[sort_indices]
+    val_sample_weight = val_sample_weight[sort_indices]
+
+    enn.evaluate(x_val[700:], y_val[700:], val_sample_weight[700:])
+
+
+
+    # wav_path = 'samples/Ses05F_impro03.wav'
+    # logmel = extract_logmel(wav_path)
+    # print (logmel.shape)
+    # y_pred = enn.predict(logmel[None,:])
+    # print ()
+    # print("Predicted label: {}, {}".format(np.argmax(y_pred, axis=1), labels[np.argmax(y_pred, axis=1)[0]]))
 
 
 
