@@ -2,6 +2,7 @@ import argparse
 import os
 from audio_features import *
 from sklearn.utils import shuffle
+import numpy as np
 
 
 def parse_args():
@@ -30,8 +31,8 @@ def parse_dialog_file(dialog_file_path):
             if emotion in target_emotions:
                 wav_path = os.path.join(dialog_wav_base_path, wavfile+'.wav')
                 print (wav_path, emotion)
-                logmel = extract_logmel(wav_path)
-                x.append(logmel)
+                features = extract_features(wav_path)
+                x.append(features)
                 y.append(target_emotions[emotion])
 
             while line != '\n':

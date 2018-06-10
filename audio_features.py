@@ -1,12 +1,18 @@
-"""Code to extract logMel features
-Ref: Haytham Fayek's blog post on "Speech Processing for Machine Learning"
+"""Code to extract audio features
+References:
+
+[1] Haytham Fayek's blog post on "Speech Processing for Machine Learning"
     url: http://haythamfayek.com/2016/04/21/speech-processing-for-machine-learning.html
+
+[2] Theodoros Giannakopoulos' "pyAudioAnalysis: An Open-Source Python Library for Audio Signal Analysis"
+    url: https://github.com/tyiannak/pyAudioAnalysis
 """
 
 import numpy as np # matrix math
 from scipy.io import wavfile # reading the wavfile
 from scipy.fftpack import dct
-
+from pyAudioAnalysis import audioBasicIO
+from pyAudioAnalysis import audioFeatureExtraction
 
 def extract_logmel(path_file, 
                     frame_size=25e-3, 
@@ -104,3 +110,31 @@ def extract_mfcc(path_file,
         mfcc -= (np.mean(mfcc, axis=0) + 1e-8)
 
     return mfcc
+
+
+def extract_features(path_file, 
+                    frame_size=25e-3, 
+                    frame_stride=10e-3):
+    """Function to combine logmel and frame level ST features"""
+    [sample_rate, signal] = audioBasicIO.readAudioFile(path_file)
+    frame_length, frame_step = frame_size * sample_rate, frame_stride * sample_rate  # Convert from seconds to samples
+    # signal_length = len(emphasized_signal)
+    frame_length = int(round(frame_length))
+    frame_step = int(round(frame_step))
+    st_features = audioFeatureExtraction.stFeatureExtraction(signal, 
+                                                            sample_rate, 
+                                                            frame_length, 
+                                                            frame_step)
+    filter_banks = extract_logmel(path_file, 
+                                frame_size=25e-3, 
+                                frame_stride=10e-3,
+                                normalize=False)
+
+    st_features = np.transpose(st_features) # transpose to make frame_count as x-axis
+    st_features = np.delete(st_features, np.s_[8:21], axis=1) # delete the MFCCs
+    if st_features.shape[0] - filter_banks.shape[0] == 1:
+        st_features = st_features[:-1, :]
+    # print (st_features.shape[0], filter_banks.shape[0])
+    features = np.c_[st_features, filter_banks]
+    features -= (np.mean(features, axis=0) + 1e-8)
+    return features
