@@ -2,5 +2,6 @@
 *.zip
 dataset/*
 models/*
+data/*
 samples/*
 .DS_Store
