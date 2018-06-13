@@ -17,10 +17,12 @@ from keras.callbacks import ModelCheckpoint, EarlyStopping
 
 from sklearn.utils import class_weight as clw
 from sklearn.utils import shuffle
+from sklearn.metrics import confusion_matrix, accuracy_score
 
 import time
 import os
 from math import ceil
+# import matplotlib.pyplot as plt
 
 
 class MeanPool(Layer):
@@ -74,6 +76,7 @@ class emoLSTM():
 
         # Bidirectional LSTM Layer
         self.model.add(Bidirectional(LSTM(128, return_sequences=True, dropout=0.5)))
+        self.model.add(Bidirectional(LSTM(128, return_sequences=True, dropout=0.5)))
 
         # Average Pooling Layer for combining all time steps' outputs
         # self.model.add(GlobalAveragePooling1D())
@@ -84,7 +87,7 @@ class emoLSTM():
         self.model.add(Dense(6, activation='softmax'))
 
         # Loss Function and Metrics
-        adam = optimizers.Adam(lr=0.001)
+        adam = optimizers.RMSprop(lr=0.001)
         self.model.compile(loss='categorical_crossentropy', 
                             optimizer=adam, 
                             metrics=['accuracy'],
@@ -113,7 +116,6 @@ class emoLSTM():
         ]
 
 
-
     def fit(self, x_train, y_train,
             batch_size=32, 
             epochs=25,
@@ -123,7 +125,7 @@ class emoLSTM():
         steps_per_epoch = ceil(len(x_train) / batch_size)
         # validation_steps = len(x_val) #// batch_size
         # number_of_batches = len(x_train)
-        self.model.fit_generator(
+        history = self.model.fit_generator(
                         generator=intel_bucket_generator(x_train, y_train, batch_size=batch_size), 
                         steps_per_epoch=steps_per_epoch,
                         epochs=epochs, 
@@ -133,7 +135,8 @@ class emoLSTM():
                         )
                        #  validation_steps=validation_steps,
                        # )
-
+        self.plot_metrics(history.history)
+        
     
     def evaluate(self, x_test, y_test, sample_weight=None):
         score = self.model.evaluate(x=pad_sequences(x_test), y=y_test, sample_weight=sample_weight)
@@ -143,8 +146,26 @@ class emoLSTM():
         
 
     def predict(self, x_test):
-        return self.model.predict(x_test)
+        return self.model.predict(pad_sequences(x_test))
 
+"""function to plot
+    def plot_metrics(self, history):
+        plt.subplot(2, 1, 1)
+        plt.title('Loss')
+        plt.plot(history['loss'], '-o', label='train')
+        plt.plot(history['val_loss'], '-o', label='val')
+        plt.xlabel('epoch')
+        plt.legend(loc='upper right')
+        plt.subplot(2,1,2)
+        plt.title('Accuracy')
+        plt.plot(history['weighted_acc'], '-o', label='train')
+        plt.plot(history['val_weighted_acc'], '-o', label='val')
+        plt.xlabel('epoch')
+        plt.legend(loc='upper left')
+        plt.savefig('metrics.png')
+        plt.gcf().set_size_inches(15, 12)
+        plt.show()
+"""
 
 def intel_bucket_generator(x_train, y_train, batch_size=64):
     num_train = len(x_train)
@@ -179,37 +200,40 @@ def pad_sequences(mini_batch):
 
 if __name__ == "__main__":
     labels = {0:'ang', 1:'hap', 2:'exc', 3:'sad', 4:'fru', 5:'neu'}
-    enn = emoLSTM('models/emorec_model_0608_164409.31-0.3824.h5')
+    enn = emoLSTM('models/emorec_model_0611_040759.val-acc-0.4148.h5')
     enn.model.summary()
 
-    x_train = np.load('data/x_train.npy')
-    y_train = np.load('data/y_train.npy')
+    # x_train = np.load('data/x_train.npy')
+    # y_train = np.load('data/y_train.npy')
     x_val = np.load('data/x_val.npy')
     y_val = np.load('data/y_val.npy')
 
     # compute class weights due to imbalanced data. 
-    class_weight = clw.compute_class_weight('balanced', np.unique(y_train), y_train)
-    class_weight = dict(enumerate(class_weight))
+    # class_weight = clw.compute_class_weight('balanced', np.unique(y_train), y_train)
+    # class_weight = dict(enumerate(class_weight))
     val_class_weight = clw.compute_class_weight('balanced', np.unique(y_val), y_val)
     val_class_weight = dict(enumerate(val_class_weight))
     val_sample_weight = np.array([val_class_weight[cls] for cls in y_val])
     # val_sample_weight = val_sample_weight.reshape(-1,1)
 
     # convert training labels to one hot vectors.
-    y_train = keras.utils.to_categorical(y_train)
-    y_val = keras.utils.to_categorical(y_val)
+    # y_train = keras.utils.to_categorical(y_train)
+    # y_val = keras.utils.to_categorical(y_val)
 
+    # seq_lens = [example.shape[0] for example in x_val]
+    # sort_indices = np.argsort(seq_lens)
+    # x_val = x_val[sort_indices]
+    # y_val = y_val[sort_indices]
+    # val_sample_weight = val_sample_weight[sort_indices]
 
-    seq_lens = [example.shape[0] for example in x_val]
-    sort_indices = np.argsort(seq_lens)
-    x_val = x_val[sort_indices]
-    y_val = y_val[sort_indices]
-    val_sample_weight = val_sample_weight[sort_indices]
-
-    enn.evaluate(x_val[700:], y_val[700:], val_sample_weight[700:])
-
-
-
+    # enn.evaluate(x_val, y_val, val_sample_weight)
+    y_pred = np.argmax(enn.predict(x_val), axis=1)
+    print (y_pred)
+    print (y_pred.shape)
+    confusion_mat = confusion_matrix(y_val, y_pred, sample_weight=val_sample_weight)
+    print (confusion_mat)
+    acc = accuracy_score(y_val, y_pred, sample_weight=val_sample_weight)
+    print ("Accuracy = {}".format(acc))
     # wav_path = 'samples/Ses05F_impro03.wav'
     # logmel = extract_logmel(wav_path)
     # print (logmel.shape)

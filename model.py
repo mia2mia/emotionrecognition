@@ -2,6 +2,7 @@ from __future__ import print_function
 from __future__ import division
 
 import numpy as np
+import matplotlib.pyplot as plt
 import tensorflow as tf
 
 import keras
@@ -84,13 +85,15 @@ class emoLSTM():
         self.model.add(Dense(6, activation='softmax'))
 
         # Loss Function and Metrics
-        adam = optimizers.Adam(lr=0.001)
+        adam = optimizers.RMSprop(lr=0.001)
         self.model.compile(loss='categorical_crossentropy', 
                             optimizer=adam, 
                             metrics=['accuracy'],
                             weighted_metrics=['accuracy'])
 
         # Model snapshotting and early stopping
+        if not os.path.isdir('models'):
+            os.makedirs('models')
         file_path = 'models/emorec_model_' \
                         + time.strftime("%m%d_%H%M%S") \
                         + ".val-acc-{val_weighted_acc:.4f}" \
@@ -123,32 +126,43 @@ class emoLSTM():
         steps_per_epoch = ceil(len(x_train) / batch_size)
         # validation_steps = len(x_val) #// batch_size
         # number_of_batches = len(x_train)
-        self.model.fit_generator(
+        history = self.model.fit_generator(
                         generator=intel_bucket_generator(x_train, y_train, batch_size=batch_size), 
                         steps_per_epoch=steps_per_epoch,
                         epochs=epochs, 
                         class_weight=class_weight,
                         validation_data=(pad_sequences(x_val), y_val, val_sample_weight),
                         callbacks=self.callback_list
-                        )
-                       #  validation_steps=validation_steps,
-                       # )
-
+                        ) # validation_steps=validation_steps,
+                        # )
+                        
+        self.plot_metrics(history.history)
+                       
         # score = self.model.evaluate_generator(val_generator(x_val, y_val, val_sample_weight), steps=validation_steps)
         # print ("Test Loss: {}, Test UA: {}, Test WA: {}".format(score[0], score[1], score[2]))
         
-        # model_name = 'emorec_model_'+time.strftime("%m%d_%H%M%S")
-        # save_dir = 'models'
-        # if not os.path.isdir(save_dir):
-        #     os.makedirs(save_dir)
-        # model_path = os.path.join(save_dir, model_name+'.h5')
-        # self.model.save(model_path)
-        # print('Saved trained model at %s ' % model_path)
         
 
     def predict(self, x_test):
         return self.model.predict(x_test)
 
+
+    def plot_metrics(self, history):
+        plt.subplot(2, 1, 1)
+        plt.title('Loss')
+        plt.plot(history['loss'], '-o', label='train')
+        plt.plot(history['val_loss'], '-o', label='val')
+        plt.xlabel('epoch')
+        plt.legend(loc='upper right')
+        plt.subplot(2,1,2)
+        plt.title('Accuracy')
+        plt.plot(history['weighted_acc'], '-o', label='train')
+        plt.plot(history['val_weighted_acc'], '-o', label='val')
+        plt.xlabel('epoch')
+        plt.legend(loc='upper left')
+        plt.savefig('metrics.png')
+        plt.gcf().set_size_inches(15, 12)
+        plt.show()
 
 # def bucket_generator(x_train, y_train, batch_size=32):
 #     num_train = len(x_train)
@@ -213,10 +227,10 @@ if __name__ == "__main__":
     y_train = keras.utils.to_categorical(y_train)
     y_val = keras.utils.to_categorical(y_val)
 
-    enn.fit(x_train, y_train, 
-            batch_size=128, 
-            epochs=100,
-            validation_data=(x_val, y_val, val_sample_weight), 
+    enn.fit(x_train[:100], y_train[:100], 
+            batch_size=32, 
+            epochs=5,
+            validation_data=(x_val[:10], y_val[:10], val_sample_weight[:10]), 
             class_weight=class_weight)
 
 
