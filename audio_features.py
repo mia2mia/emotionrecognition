@@ -138,3 +138,18 @@ def extract_features(path_file,
     features = np.c_[st_features, filter_banks]
     features -= (np.mean(features, axis=0) + 1e-8)
     return features
+
+
+def extract_stfeatures(path_file, 
+                    frame_size=25e-3, 
+                    frame_stride=10e-3):
+    [sample_rate, signal] = audioBasicIO.readAudioFile(path_file)
+    frame_length, frame_step = frame_size * sample_rate, frame_stride * sample_rate  # Convert from seconds to samples
+    frame_length = int(round(frame_length))
+    frame_step = int(round(frame_step))
+    st_features = audioFeatureExtraction.stFeatureExtraction(signal, 
+                                                            sample_rate, 
+                                                            frame_length, 
+                                                            frame_step)
+    st_features = np.transpose(st_features) # transpose to make frame_count as x-axis
+    return st_features

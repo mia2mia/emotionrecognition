@@ -14,6 +14,7 @@ from keras.engine import InputSpec
 from keras.engine.topology import Layer
 from keras import optimizers
 from keras.callbacks import ModelCheckpoint, EarlyStopping
+from audio_features import extract_features
 
 from sklearn.utils import class_weight as clw
 from sklearn.utils import shuffle
@@ -205,15 +206,16 @@ if __name__ == "__main__":
 
     # x_train = np.load('data/x_train.npy')
     # y_train = np.load('data/y_train.npy')
-    x_val = np.load('data/x_val.npy')
-    y_val = np.load('data/y_val.npy')
+    # x_val = np.load('data/x_val.npy')
+    # y_val = np.load('data/y_val.npy')
 
     # compute class weights due to imbalanced data. 
     # class_weight = clw.compute_class_weight('balanced', np.unique(y_train), y_train)
     # class_weight = dict(enumerate(class_weight))
-    val_class_weight = clw.compute_class_weight('balanced', np.unique(y_val), y_val)
-    val_class_weight = dict(enumerate(val_class_weight))
-    val_sample_weight = np.array([val_class_weight[cls] for cls in y_val])
+    # val_class_weight = clw.compute_class_weight('balanced', np.unique(y_val), y_val)
+    # val_class_weight = dict(enumerate(val_class_weight))
+    # val_sample_weight = np.array([val_class_weight[cls] for cls in y_val])
+    # 
     # val_sample_weight = val_sample_weight.reshape(-1,1)
 
     # convert training labels to one hot vectors.
@@ -227,26 +229,20 @@ if __name__ == "__main__":
     # val_sample_weight = val_sample_weight[sort_indices]
 
     # enn.evaluate(x_val, y_val, val_sample_weight)
-    y_pred = np.argmax(enn.predict(x_val), axis=1)
-    print (y_pred)
-    print (y_pred.shape)
-    confusion_mat = confusion_matrix(y_val, y_pred, sample_weight=val_sample_weight)
-    print (confusion_mat)
-    acc = accuracy_score(y_val, y_pred, sample_weight=val_sample_weight)
-    print ("Accuracy = {}".format(acc))
-    # wav_path = 'samples/Ses05F_impro03.wav'
-    # logmel = extract_logmel(wav_path)
-    # print (logmel.shape)
-    # y_pred = enn.predict(logmel[None,:])
-    # print ()
-    # print("Predicted label: {}, {}".format(np.argmax(y_pred, axis=1), labels[np.argmax(y_pred, axis=1)[0]]))
-
-
-
-
-
-
-
+    # y_pred = np.argmax(enn.predict(x_val), axis=1)
+    # print (y_pred)
+    # print (y_pred.shape)
+    # confusion_mat = confusion_matrix(y_val, y_pred, sample_weight=val_sample_weight)
+    # print (confusion_mat)
+    # acc = accuracy_score(y_val, y_pred, sample_weight=val_sample_weight)
+    # print ("Accuracy = {}".format(acc))
+    
+    wav_path = 'samples/Ses05F_impro03.wav'
+    feats = extract_features(wav_path)
+    print (feats.shape)
+    y_pred = enn.predict(feats[None,:])
+    print ()
+    print("Predicted label: {}, {}".format(np.argmax(y_pred, axis=1), labels[np.argmax(y_pred, axis=1)[0]]))
 
 
 

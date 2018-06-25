@@ -65,29 +65,28 @@ class emoLSTM():
     def build_model(self):
         self.model = Sequential()
         # Masking layer to ignore the 0 padded values
-        self.model.add(Masking(mask_value=0.0, input_shape=(None, 61)))
+        self.model.add(Masking(mask_value=0.0, input_shape=(None, 40)))
 
         # Dense layers for LLD learning
         self.model.add(TimeDistributed(Dense(512, activation='relu')))#, input_shape=(None, 40)))
         self.model.add(Dropout(0.5))
-        self.model.add(TimeDistributed(Dense(512, activation='relu')))
-        self.model.add(Dropout(0.5))
+        # self.model.add(TimeDistributed(Dense(512, activation='relu')))
+        # self.model.add(Dropout(0.5))
 
         # Bidirectional LSTM Layer
-        self.model.add(Bidirectional(LSTM(128, return_sequences=True, dropout=0.5)))
+        self.model.add(Bidirectional(LSTM(64, return_sequences=True, dropout=0.5)))
 
         # Average Pooling Layer for combining all time steps' outputs
         # self.model.add(GlobalAveragePooling1D())
         self.model.add(MeanPool())
-        # self.model.add(Average())
         
         # Final Classification Layer with Softmax activation
-        self.model.add(Dense(6, activation='softmax'))
+        self.model.add(Dense(4, activation='softmax'))
 
         # Loss Function and Metrics
-        adam = optimizers.RMSprop(lr=0.001)
+        opt = optimizers.RMSprop(lr=0.001)
         self.model.compile(loss='categorical_crossentropy', 
-                            optimizer=adam, 
+                            optimizer=opt, 
                             metrics=['accuracy'],
                             weighted_metrics=['accuracy'])
 
@@ -134,8 +133,8 @@ class emoLSTM():
                         validation_data=(pad_sequences(x_val), y_val, val_sample_weight),
                         callbacks=self.callback_list
                         ) # validation_steps=validation_steps,
-                        # )
-                        
+
+        self.history = history  
         self.plot_metrics(history.history)
                        
         # score = self.model.evaluate_generator(val_generator(x_val, y_val, val_sample_weight), steps=validation_steps)
@@ -147,7 +146,7 @@ class emoLSTM():
         return self.model.predict(x_test)
 
 
-    def plot_metrics(self, history):
+    def plot_metrics(self, history, show=False):
         plt.subplot(2, 1, 1)
         plt.title('Loss')
         plt.plot(history['loss'], '-o', label='train')
@@ -162,7 +161,10 @@ class emoLSTM():
         plt.legend(loc='upper left')
         plt.savefig('metrics.png')
         plt.gcf().set_size_inches(15, 12)
-        plt.show()
+        if show:
+            plt.show()
+        else:
+            plt.close()
 
 # def bucket_generator(x_train, y_train, batch_size=32):
 #     num_train = len(x_train)
@@ -211,10 +213,10 @@ def pad_sequences(mini_batch):
 if __name__ == "__main__":
     enn = emoLSTM()
     enn.model.summary()
-    x_train = np.load('data/x_train.npy')
-    y_train = np.load('data/y_train.npy')
-    x_val = np.load('data/x_val.npy')
-    y_val = np.load('data/y_val.npy')
+    x_train = np.load('dataset_four/x_train.npy')
+    y_train = np.load('dataset_four/y_train.npy')
+    x_val = np.load('dataset_four/x_val.npy')
+    y_val = np.load('dataset_four/y_val.npy')
 
     # compute class weights due to imbalanced data. 
     class_weight = clw.compute_class_weight('balanced', np.unique(y_train), y_train)

@@ -1,6 +1,6 @@
 import argparse
 import os
-from audio_features import *
+from audio_features import extract_features, extract_logmel
 from sklearn.utils import shuffle
 import numpy as np
 
@@ -31,7 +31,7 @@ def parse_dialog_file(dialog_file_path):
             if emotion in target_emotions:
                 wav_path = os.path.join(dialog_wav_base_path, wavfile+'.wav')
                 print (wav_path, emotion)
-                features = extract_features(wav_path)
+                features = extract_logmel(wav_path)
                 x.append(features)
                 y.append(target_emotions[emotion])
 
@@ -56,14 +56,18 @@ if __name__ == '__main__':
     target_emotions = {
                         'ang':0, 
                         'hap':1, 
-                        'exc':2, 
-                        'sad':3, 
-                        'fru':4, 
-                        'neu':5,
+                        'sad':2,  
+                        'neu':3,
                         }
+    # target_emotions = {
+    #                     'ang':0, 
+    #                     'hap':1, 
+    #                     'exc':2, 
+    #                     'sad':3, 
+    #                     'fru':4, 
+    #                     'neu':5,
+    #                     }
 
-    # x_train = []
-    # y_train = []
     x = []
     y = []
 
@@ -81,10 +85,13 @@ if __name__ == '__main__':
     y_val = y[:n_val]
     x_test = x[n_val:]
     y_test = y[n_val:]
-
-    print len(x_val), len(y_val), len(x_test), len(y_test)
-
+    # x_train = x
+    # y_train = y
+    print (len(x_val), len(y_val), len(x_test), len(y_test))
+    # print (len(x_train), len(y_train))
     np.save(os.path.join(out_path,'x_val.npy'), x_val)
     np.save(os.path.join(out_path,'y_val.npy'), y_val)
     np.save(os.path.join(out_path,'x_test.npy'), x_test)
     np.save(os.path.join(out_path,'y_test.npy'), y_test)
+    # np.save(os.path.join(out_path,'x_train.npy'), x_train)
+    # np.save(os.path.join(out_path,'y_train.npy'), y_train)
