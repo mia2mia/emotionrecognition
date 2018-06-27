@@ -5,3 +5,5 @@ models/*
 data/*
 samples/*
 .DS_Store
+*.png
+
