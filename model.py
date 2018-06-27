@@ -14,14 +14,14 @@ from keras import backend as K
 from keras.engine import InputSpec
 from keras.engine.topology import Layer
 from keras import optimizers
-from keras.callbacks import ModelCheckpoint, EarlyStopping
+from keras.callbacks import ModelCheckpoint, EarlyStopping, LearningRateScheduler
 
 from sklearn.utils import class_weight as clw
 from sklearn.utils import shuffle
 
 import time
 import os
-from math import ceil
+from math import ceil, floor, pow
 
 
 class MeanPool(Layer):
@@ -65,7 +65,7 @@ class emoLSTM():
     def build_model(self):
         self.model = Sequential()
         # Masking layer to ignore the 0 padded values
-        self.model.add(Masking(mask_value=0.0, input_shape=(None, 34)))
+        self.model.add(Masking(mask_value=0.0, input_shape=(None, 40)))
 
         # Dense layers for LLD learning
         self.model.add(TimeDistributed(Dense(512, activation='relu')))#, input_shape=(None, 40)))
@@ -84,13 +84,15 @@ class emoLSTM():
         self.model.add(Dense(4, activation='softmax'))
 
         # Loss Function and Metrics
-        opt = optimizers.RMSprop(lr=0.001)
+        opt = optimizers.RMSprop(lr=0.0)
         self.model.compile(loss='categorical_crossentropy', 
                             optimizer=opt, 
                             metrics=['accuracy'],
                             weighted_metrics=['accuracy'])
 
-        # Model snapshotting and early stopping
+        # Callbacks: Model snapshotting, early stopping, Learning Rate scheduler
+        # self.loss_history = LossHistory()
+
         if not os.path.isdir('models'):
             os.makedirs('models')
         file_path = 'models/emorec_model_' \
@@ -99,6 +101,7 @@ class emoLSTM():
                         + '.h5'
 
         self.callback_list = [
+            LearningRateScheduler(step_decay, verbose=1),
             EarlyStopping(
                 monitor='val_weighted_acc',
                 patience=10,
@@ -113,7 +116,6 @@ class emoLSTM():
                 mode='max'
             )
         ]
-
 
 
     def fit(self, x_train, y_train,
@@ -131,15 +133,11 @@ class emoLSTM():
                         epochs=epochs, 
                         class_weight=class_weight,
                         validation_data=(pad_sequences(x_val), y_val, val_sample_weight),
-                        callbacks=self.callback_list
-                        ) # validation_steps=validation_steps,
+                        callbacks=self.callback_list) # validation_steps=validation_steps,
 
-        self.history = history  
+        self.history = history
+        # print (self.loss_history.losses)  
         self.plot_metrics(history.history)
-                       
-        # score = self.model.evaluate_generator(val_generator(x_val, y_val, val_sample_weight), steps=validation_steps)
-        # print ("Test Loss: {}, Test UA: {}, Test WA: {}".format(score[0], score[1], score[2]))
-        
         
 
     def predict(self, x_test):
@@ -166,17 +164,13 @@ class emoLSTM():
         else:
             plt.close()
 
-# def bucket_generator(x_train, y_train, batch_size=32):
-#     num_train = len(x_train)
-#     while True:
-#         counter = 0
-#         x_train, y_train = shuffle(x_train, y_train)
-#         while counter < num_train:
-#             x_batch = pad_sequences(x_train[counter:counter+batch_size])
-#             y_batch = y_train[counter:counter+batch_size]
-#             # print (x_batch.shape, y_batch.shape)
-#             counter = counter + batch_size
-#             yield x_batch, y_batch
+    
+def step_decay(epoch):
+    initial_lrate = 0.001
+    drop = 0.5
+    epochs_drop = 10.0
+    lrate = initial_lrate * pow(drop, floor((epoch)/epochs_drop))
+    return lrate
 
 
 def intel_bucket_generator(x_train, y_train, batch_size=64):
@@ -213,10 +207,10 @@ def pad_sequences(mini_batch):
 if __name__ == "__main__":
     enn = emoLSTM()
     enn.model.summary()
-    x_train = np.load('dataset_alt/x_train.npy')
-    y_train = np.load('dataset_alt/y_train.npy')
-    x_val = np.load('dataset_alt/x_val.npy')
-    y_val = np.load('dataset_alt/y_val.npy')
+    x_train = np.load('dataset_logmel/x_train.npy')
+    y_train = np.load('dataset_logmel/y_train.npy')
+    x_val = np.load('dataset_logmel/x_val.npy')
+    y_val = np.load('dataset_logmel/y_val.npy')
 
     # compute class weights due to imbalanced data. 
     class_weight = clw.compute_class_weight('balanced', np.unique(y_train), y_train)
@@ -236,6 +230,30 @@ if __name__ == "__main__":
             class_weight=class_weight)
 
 
+
+
+# class LossHistory(keras.callbacks.Callback):
+#     def on_train_begin(self, logs={}):
+#         self.losses = []
+#         self.lr = []
+
+#     def on_batch_end(self, batch, logs={}):
+#         self.losses.append(logs.get('loss'))
+#         self.lr.append(step_decay(len(self.losses)))
+#         print('lr:', step_decay(len(self.losses)))
+
+# def bucket_generator(x_train, y_train, batch_size=32):
+#     num_train = len(x_train)
+#     while True:
+#         counter = 0
+#         x_train, y_train = shuffle(x_train, y_train)
+#         while counter < num_train:
+#             x_batch = pad_sequences(x_train[counter:counter+batch_size])
+#             y_batch = y_train[counter:counter+batch_size]
+#             # print (x_batch.shape, y_batch.shape)
+#             counter = counter + batch_size
+#             yield x_batch, y_batch
+#             
 """deprecated batch size 1 data generator
 # def data_generator(x_train, y_train):
 #     while True:
