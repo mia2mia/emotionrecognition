@@ -65,7 +65,7 @@ class emoLSTM():
     def build_model(self):
         self.model = Sequential()
         # Masking layer to ignore the 0 padded values
-        self.model.add(Masking(mask_value=0.0, input_shape=(None, 40)))
+        self.model.add(Masking(mask_value=0.0, input_shape=(None, 34)))
 
         # Dense layers for LLD learning
         self.model.add(TimeDistributed(Dense(512, activation='relu')))#, input_shape=(None, 40)))
@@ -213,10 +213,10 @@ def pad_sequences(mini_batch):
 if __name__ == "__main__":
     enn = emoLSTM()
     enn.model.summary()
-    x_train = np.load('dataset_four/x_train.npy')
-    y_train = np.load('dataset_four/y_train.npy')
-    x_val = np.load('dataset_four/x_val.npy')
-    y_val = np.load('dataset_four/y_val.npy')
+    x_train = np.load('dataset_alt/x_train.npy')
+    y_train = np.load('dataset_alt/y_train.npy')
+    x_val = np.load('dataset_alt/x_val.npy')
+    y_val = np.load('dataset_alt/y_val.npy')
 
     # compute class weights due to imbalanced data. 
     class_weight = clw.compute_class_weight('balanced', np.unique(y_train), y_train)
@@ -229,10 +229,10 @@ if __name__ == "__main__":
     y_train = keras.utils.to_categorical(y_train)
     y_val = keras.utils.to_categorical(y_val)
 
-    enn.fit(x_train[:100], y_train[:100], 
-            batch_size=32, 
-            epochs=5,
-            validation_data=(x_val[:10], y_val[:10], val_sample_weight[:10]), 
+    enn.fit(x_train, y_train, 
+            batch_size=64, 
+            epochs=100,
+            validation_data=(x_val, y_val, val_sample_weight), 
             class_weight=class_weight)
 
 
