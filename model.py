@@ -3,7 +3,6 @@ from __future__ import division
 
 import numpy as np
 import matplotlib.pyplot as plt
-import tensorflow as tf
 
 import keras
 from keras.layers import Dense, Dropout, Masking
@@ -14,7 +13,7 @@ from keras import backend as K
 from keras.engine import InputSpec
 from keras.engine.topology import Layer
 from keras import optimizers
-from keras.callbacks import ModelCheckpoint, EarlyStopping, LearningRateScheduler
+from keras.callbacks import ModelCheckpoint, EarlyStopping, LearningRateScheduler, ReduceLROnPlateau
 
 from sklearn.utils import class_weight as clw
 from sklearn.utils import shuffle
@@ -24,17 +23,15 @@ import os
 from math import ceil, floor, pow
 
 
-class MeanPool(Layer):
+class GlobalPNMaxPooling1D(Layer):
     def __init__(self, **kwargs):
-        super(MeanPool, self).__init__(**kwargs)
+        super(GlobalPNMaxPooling1D, self).__init__(**kwargs)
         self.supports_masking = True
         self.input_spec = InputSpec(ndim=3)
 
-
-    def compute_mask(self, input, input_mask=None):
+    def compute_mask(self, input, mask=None):
       # do not pass the mask to the next layers
       return None
-
 
     def call(self, x, mask=None):
         # x shape = (batch, timesteps, feats)
@@ -45,14 +42,18 @@ class MeanPool(Layer):
             # mask (batch, x_dim, time)
             mask = K.repeat(mask, x.shape[-1]) # (batch, timesteps) --> (batch, feats, timesteps)
             # mask (batch, time, x_dim)
-            mask = tf.transpose(mask, [0,2,1]) # (batch, feats, timesteps) --> (batch, timesteps, feats)
+            mask = K.permute_dimensions(mask, (0,2,1)) # (batch, feats, timesteps) --> (batch, timesteps, feats)
             x = x * mask
-        return K.sum(x, axis=1) / K.sum(mask, axis=1)
+
+        max_mask = K.equal(K.max(K.abs(x), axis=1, keepdims=True), K.abs(x))
+        x = x * max_mask
+        return K.sum(x, axis=1) # (batch, feats)
 
 
     def compute_output_shape(self, input_shape):
         # remove temporal dimension
         return (input_shape[0], input_shape[2])
+
 
 class emoLSTM():
     
@@ -77,15 +78,14 @@ class emoLSTM():
         # Bidirectional LSTM Layer
         self.model.add(Bidirectional(LSTM(64, return_sequences=True)))
         self.model.add(Dropout(0.5))
-        # Average Pooling Layer for combining all time steps' outputs
-        # self.model.add(GlobalAveragePooling1D())
-        self.model.add(MeanPool())
+        # PN Max Pooling Layer for combining all time steps' outputs
+        self.model.add(GlobalPNMaxPooling1D())
         
         # Final Classification Layer with Softmax activation
         self.model.add(Dense(4, activation='softmax'))
 
         # Loss Function and Metrics
-        opt = optimizers.RMSprop(lr=0.0)
+        opt = optimizers.RMSprop(lr=0.005)
         self.model.compile(loss='categorical_crossentropy', 
                             optimizer=opt, 
                             metrics=['accuracy'],
@@ -102,16 +102,23 @@ class emoLSTM():
                         + '.h5'
 
         self.callback_list = [
-            LearningRateScheduler(step_decay, verbose=1),
+            ReduceLROnPlateau(
+                monitor='val_loss', 
+                factor=0.5,
+                patience=5, 
+                min_lr=0.0001, 
+                verbose=1,
+                mode='min'
+            ),
             EarlyStopping(
-                monitor='val_weighted_acc',
+                monitor='val_acc',
                 patience=10,
                 verbose=1,
                 mode='max'
             ),
             ModelCheckpoint(
                 filepath=file_path,
-                monitor='val_weighted_acc',
+                monitor='val_acc',
                 save_best_only='True',
                 verbose=1,
                 mode='max'
