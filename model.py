@@ -23,15 +23,47 @@ import os
 from math import ceil, floor, pow
 
 
+class LSTMpeephole(LSTM):
+    def __init__(self, **kwargs):
+        super(LSTMpeephole, self).__init__(**kwargs)
+
+    def build(self):
+        super(LSTMpeephole, self).build()
+        self.P_i = self.inner_init((self.output_dim, self.output_dim))
+        self.P_f = self.inner_init((self.output_dim, self.output_dim))
+        self.P_c = self.inner_init((self.output_dim, self.output_dim))
+        self.P_o = self.inner_init((self.output_dim, self.output_dim))
+        self.trainable_weights += [self.P_i, self.P_f, self.P_o]
+
+    def step(self, x, states):
+        assert len(states) == 2
+        h_tm1 = states[0]
+        c_tm1 = states[1]
+
+        x_i = K.dot(x, self.W_i) + self.b_i
+        x_f = K.dot(x, self.W_f) + self.b_f
+        x_c = K.dot(x, self.W_c) + self.b_c
+        x_o = K.dot(x, self.W_o) + self.b_o
+
+        i = self.inner_activation(x_i + K.dot(h_tm1, self.U_i) + K.dot(c_tm1, self.P_i))
+        f = self.inner_activation(x_f + K.dot(h_tm1, self.U_f) + K.dot(c_tm1, self.P_f))
+        c = f * c_tm1 + i * self.activation(x_c + K.dot(h_tm1, self.U_c) + K.dot(c_tm1, self.P_c))
+        o = self.inner_activation(x_o + K.dot(h_tm1, self.U_o) + K.dot(c_tm1, self.P_o))
+        h = o * self.activation(c)
+        return h, [h, c]
+
+
 class GlobalPNMaxPooling1D(Layer):
     def __init__(self, **kwargs):
         super(GlobalPNMaxPooling1D, self).__init__(**kwargs)
         self.supports_masking = True
         self.input_spec = InputSpec(ndim=3)
 
+
     def compute_mask(self, input, mask=None):
       # do not pass the mask to the next layers
       return None
+
 
     def call(self, x, mask=None):
         # x shape = (batch, timesteps, feats)
@@ -76,7 +108,7 @@ class emoLSTM():
         # self.model.add(Dropout(0.5))
 
         # Bidirectional LSTM Layer
-        self.model.add(Bidirectional(LSTM(64, return_sequences=True)))
+        self.model.add(Bidirectional(LSTMpeephole(64, return_sequences=True)))
         self.model.add(Dropout(0.5))
         # PN Max Pooling Layer for combining all time steps' outputs
         self.model.add(GlobalPNMaxPooling1D())
@@ -85,7 +117,7 @@ class emoLSTM():
         self.model.add(Dense(4, activation='softmax'))
 
         # Loss Function and Metrics
-        opt = optimizers.RMSprop(lr=0.005)
+        opt = optimizers.SGD(lr=0.005)
         self.model.compile(loss='categorical_crossentropy', 
                             optimizer=opt, 
                             metrics=['accuracy'],
@@ -171,14 +203,6 @@ class emoLSTM():
             plt.show()
         else:
             plt.close()
-
-    
-def step_decay(epoch):
-    initial_lrate = 0.001
-    drop = 0.5
-    epochs_drop = 10.0
-    lrate = initial_lrate * pow(drop, floor((epoch)/epochs_drop))
-    return lrate
 
 
 def intel_bucket_generator(x_train, y_train, batch_size=64):
