@@ -37,13 +37,15 @@ class MeanPool(Layer):
 
 
     def call(self, x, mask=None):
+        # x shape = (batch, timesteps, feats)
+        # mask shape = (batch, timesteps)
         if mask is not None:
             # mask (batch, time)
-            mask = K.cast(mask, K.floatx())
+            mask = K.cast(mask, K.floatx()) # cast to float type
             # mask (batch, x_dim, time)
-            mask = K.repeat(mask, x.shape[-1])
+            mask = K.repeat(mask, x.shape[-1]) # (batch, timesteps) --> (batch, feats, timesteps)
             # mask (batch, time, x_dim)
-            mask = tf.transpose(mask, [0,2,1])
+            mask = tf.transpose(mask, [0,2,1]) # (batch, feats, timesteps) --> (batch, timesteps, feats)
             x = x * mask
         return K.sum(x, axis=1) / K.sum(mask, axis=1)
 
@@ -51,7 +53,6 @@ class MeanPool(Layer):
     def compute_output_shape(self, input_shape):
         # remove temporal dimension
         return (input_shape[0], input_shape[2])
-
 
 class emoLSTM():
     
@@ -68,14 +69,14 @@ class emoLSTM():
         self.model.add(Masking(mask_value=0.0, input_shape=(None, 40)))
 
         # Dense layers for LLD learning
-        self.model.add(TimeDistributed(Dense(512, activation='relu')))#, input_shape=(None, 40)))
+        self.model.add(TimeDistributed(Dense(128, activation='relu')))#, input_shape=(None, 40)))
         self.model.add(Dropout(0.5))
         # self.model.add(TimeDistributed(Dense(512, activation='relu')))
         # self.model.add(Dropout(0.5))
 
         # Bidirectional LSTM Layer
-        self.model.add(Bidirectional(LSTM(64, return_sequences=True, dropout=0.5)))
-
+        self.model.add(Bidirectional(LSTM(64, return_sequences=True)))
+        self.model.add(Dropout(0.5))
         # Average Pooling Layer for combining all time steps' outputs
         # self.model.add(GlobalAveragePooling1D())
         self.model.add(MeanPool())
@@ -207,10 +208,10 @@ def pad_sequences(mini_batch):
 if __name__ == "__main__":
     enn = emoLSTM()
     enn.model.summary()
-    x_train = np.load('dataset_logmel/x_train.npy')
-    y_train = np.load('dataset_logmel/y_train.npy')
-    x_val = np.load('dataset_logmel/x_val.npy')
-    y_val = np.load('dataset_logmel/y_val.npy')
+    x_train = np.load('dataset_four/x_train.npy')
+    y_train = np.load('dataset_four/y_train.npy')
+    x_val = np.load('dataset_four/x_val.npy')
+    y_val = np.load('dataset_four/y_val.npy')
 
     # compute class weights due to imbalanced data. 
     class_weight = clw.compute_class_weight('balanced', np.unique(y_train), y_train)
