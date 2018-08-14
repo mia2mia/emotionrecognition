@@ -13,6 +13,8 @@ from scipy.io import wavfile # reading the wavfile
 from scipy.fftpack import dct
 from pyAudioAnalysis import audioBasicIO
 from pyAudioAnalysis import audioFeatureExtraction
+from mel_features import log_mel_spectrogram
+
 
 def extract_logmel(path_file, 
                     frame_size=25e-3, 
@@ -115,7 +117,10 @@ def extract_mfcc(path_file,
 def extract_features(path_file, 
                     frame_size=25e-3, 
                     frame_stride=10e-3):
-    """Function to combine logmel and frame level ST features"""
+    """Function to combine logmel and frame level ST features
+        extracted using pyAudioAnalysis Library
+        Output: 40+22 = 62 dim logmel+ST features
+    """
     [sample_rate, signal] = audioBasicIO.readAudioFile(path_file)
     frame_length, frame_step = frame_size * sample_rate, frame_stride * sample_rate  # Convert from seconds to samples
     # signal_length = len(emphasized_signal)
@@ -143,6 +148,10 @@ def extract_features(path_file,
 def extract_stfeatures(path_file, 
                     frame_size=25e-3, 
                     frame_stride=10e-3):
+    """Function to extact only ST features including MFCC
+    using PyAudioAnalysis Library
+    Output: 34 dim ST features
+    """
     [sample_rate, signal] = audioBasicIO.readAudioFile(path_file)
     frame_length, frame_step = frame_size * sample_rate, frame_stride * sample_rate  # Convert from seconds to samples
     frame_length = int(round(frame_length))
@@ -153,3 +162,24 @@ def extract_stfeatures(path_file,
                                                             frame_step)
     st_features = np.transpose(st_features) # transpose to make frame_count as x-axis
     return st_features
+
+
+def extract_alt_logmel(path_file, 
+                        frame_size=0.025,
+                        frame_stride=0.010,
+                        normalize=True):
+    """This function extracts logmel features using the provided logmel feature extraction
+        code included in the google audioset (vggish) repository. Main difference is it uses 
+        Hann Window instead of Hamming window
+    """
+    sample_rate, signal = wavfile.read(path_file)
+    filter_banks = log_mel_spectrogram(signal,
+                                        audio_sample_rate=sample_rate,
+                                        log_offset=0.0,
+                                        window_length_secs=frame_size,
+                                        hop_length_secs=frame_stride)
+    if normalize:
+        filter_banks -= (np.mean(filter_banks, axis=0) + 1e-8)
+    # print (np.mean(filter_banks, axis=0))
+    # print (filter_banks.shape)
+    return filter_banks

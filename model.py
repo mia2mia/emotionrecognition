@@ -3,7 +3,6 @@ from __future__ import division
 
 import numpy as np
 import matplotlib.pyplot as plt
-import tensorflow as tf
 
 import keras
 from keras.layers import Dense, Dropout, Masking
@@ -21,10 +20,12 @@ from sklearn.utils import shuffle
 
 import time
 import os
-from math import ceil, floor, pow
 
 
 class MeanPool(Layer):
+    """This is a custom class to perform GlobalAveragePooling1D,
+        but with support for masking.
+    """
     def __init__(self, **kwargs):
         super(MeanPool, self).__init__(**kwargs)
         self.supports_masking = True
@@ -45,7 +46,7 @@ class MeanPool(Layer):
             # mask (batch, x_dim, time)
             mask = K.repeat(mask, x.shape[-1]) # (batch, timesteps) --> (batch, feats, timesteps)
             # mask (batch, time, x_dim)
-            mask = tf.transpose(mask, [0,2,1]) # (batch, feats, timesteps) --> (batch, timesteps, feats)
+            mask = K.permute_dimensions(mask, (0,2,1)) # (batch, feats, timesteps) --> (batch, timesteps, feats)
             x = x * mask
         return K.sum(x, axis=1) / K.sum(mask, axis=1)
 
@@ -54,8 +55,9 @@ class MeanPool(Layer):
         # remove temporal dimension
         return (input_shape[0], input_shape[2])
 
+
 class emoLSTM():
-    
+    """Model for Emotion Classifier"""
     def __init__(self, pre_trained=None):
         if pre_trained is None:
             self.build_model()
@@ -65,7 +67,7 @@ class emoLSTM():
 
     def build_model(self):
         self.model = Sequential()
-        # Masking layer to ignore the 0 padded values
+        # Masking layer to ignore the 0 padded values, input shape 40 for logmel features
         self.model.add(Masking(mask_value=0.0, input_shape=(None, 40)))
 
         # Dense layers for LLD learning
@@ -78,7 +80,6 @@ class emoLSTM():
         self.model.add(Bidirectional(LSTM(64, return_sequences=True)))
         self.model.add(Dropout(0.5))
         # Average Pooling Layer for combining all time steps' outputs
-        # self.model.add(GlobalAveragePooling1D())
         self.model.add(MeanPool())
         
         # Final Classification Layer with Softmax activation
@@ -102,19 +103,14 @@ class emoLSTM():
                         + '.h5'
 
         self.callback_list = [
-            LearningRateScheduler(step_decay, verbose=1),
+            LearningRateScheduler(
+                step_decay, verbose=1
+            ),
             EarlyStopping(
-                monitor='val_weighted_acc',
-                patience=10,
-                verbose=1,
-                mode='max'
+                monitor='val_weighted_acc', patience=10, verbose=1, mode='max'
             ),
             ModelCheckpoint(
-                filepath=file_path,
-                monitor='val_weighted_acc',
-                save_best_only='True',
-                verbose=1,
-                mode='max'
+                filepath=file_path, monitor='val_weighted_acc', save_best_only='True', verbose=1, mode='max'
             )
         ]
 
@@ -125,7 +121,7 @@ class emoLSTM():
             validation_data=None, class_weight=None):
         
         x_val, y_val, val_sample_weight = validation_data
-        steps_per_epoch = ceil(len(x_train) / batch_size)
+        steps_per_epoch = np.ceil(len(x_train) / batch_size)
         # validation_steps = len(x_val) #// batch_size
         # number_of_batches = len(x_train)
         history = self.model.fit_generator(
@@ -134,10 +130,9 @@ class emoLSTM():
                         epochs=epochs, 
                         class_weight=class_weight,
                         validation_data=(pad_sequences(x_val), y_val, val_sample_weight),
-                        callbacks=self.callback_list) # validation_steps=validation_steps,
+                        callbacks=self.callback_list
+                    )
 
-        self.history = history
-        # print (self.loss_history.losses)  
         self.plot_metrics(history.history)
         
 
@@ -167,14 +162,21 @@ class emoLSTM():
 
     
 def step_decay(epoch):
+    """Function to compute learning rate decay"""
     initial_lrate = 0.001
     drop = 0.5
     epochs_drop = 10.0
-    lrate = initial_lrate * pow(drop, floor((epoch)/epochs_drop))
+    lrate = initial_lrate * (drop ** (epoch//epochs_drop))
     return lrate
 
 
 def intel_bucket_generator(x_train, y_train, batch_size=64):
+    """This function generate mini-batches of training data using
+        an intelligent bucketing strategy. It first sorts the training 
+        data according to number of frames in a training example and 
+        then creates mini-batches of size batch_size from consecutive
+        buckets whilst shuffling the data internally within a bucket
+    """ 
     num_train = len(x_train)
     seq_lens = [example.shape[0] for example in x_train]
     sort_indices = np.argsort(seq_lens)
@@ -195,6 +197,9 @@ def intel_bucket_generator(x_train, y_train, batch_size=64):
 
 
 def pad_sequences(mini_batch):
+    """Function to pad a mini-batch of training examples to the
+        maximum frame_length of an example within a bucket
+        """
     batch = np.copy(mini_batch)
     max_len = max([example.shape[0] for example in batch])
     feat_len = batch[0].shape[1]
