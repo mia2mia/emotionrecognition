@@ -15,7 +15,7 @@ from pyAudioAnalysis import audioBasicIO
 from pyAudioAnalysis import audioFeatureExtraction
 from mel_features import log_mel_spectrogram
 
-
+# 40 dim features
 def extract_logmel(path_file, 
                     frame_size=25e-3, 
                     frame_stride=10e-3, 
@@ -81,7 +81,7 @@ def extract_logmel(path_file,
     
     return filter_banks
 
-
+# 12 dim features
 def extract_mfcc(path_file, 
                 frame_size=25e-3, 
                 frame_stride=10e-3, 
@@ -113,7 +113,7 @@ def extract_mfcc(path_file,
 
     return mfcc
 
-
+# 62 dim
 def extract_features(path_file, 
                     frame_size=25e-3, 
                     frame_stride=10e-3):
@@ -144,7 +144,8 @@ def extract_features(path_file,
     features -= (np.mean(features, axis=0) + 1e-8)
     return features
 
-
+# 34 dim 
+# description: https://github.com/tyiannak/pyAudioAnalysis/wiki/3.-Feature-Extraction
 def extract_stfeatures(path_file, 
                     frame_size=25e-3, 
                     frame_stride=10e-3):
@@ -163,7 +164,7 @@ def extract_stfeatures(path_file,
     st_features = np.transpose(st_features) # transpose to make frame_count as x-axis
     return st_features
 
-
+# 40 dim
 def extract_alt_logmel(path_file, 
                         frame_size=0.025,
                         frame_stride=0.010,

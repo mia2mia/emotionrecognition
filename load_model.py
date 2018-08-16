@@ -10,7 +10,6 @@ from keras.models import load_model
 from keras import backend as K
 from keras.engine import InputSpec
 from keras.engine.topology import Layer
-from audio_features import extract_features
 
 from sklearn.utils import class_weight as clw
 from sklearn.utils import shuffle
@@ -18,6 +17,9 @@ from sklearn.metrics import confusion_matrix, accuracy_score
 
 import time
 import os
+
+#TODO: load the correct feature extraction function
+from audio_features import extract_logmel as extract_feat
 # import matplotlib.pyplot as plt
 
 
@@ -40,7 +42,7 @@ class MeanPool(Layer):
             # mask (batch, x_dim, time)
             mask = K.repeat(mask, x.shape[-1])
             # mask (batch, time, x_dim)
-            mask = tf.transpose(mask, [0,2,1])
+            mask = K.permute_dimensions(mask, (0,2,1))
             x = x * mask
         return K.sum(x, axis=1) / K.sum(mask, axis=1)
 
@@ -130,7 +132,10 @@ if __name__ == "__main__":
     realtime_mode = args["realtime"]
     wav_path = args["audio"]
 
-    labels = {0:'ang', 1:'hap', 2:'exc', 3:'sad', 4:'fru', 5:'neu'}
+    # previously tried 6 emotions
+    # labels = {0:'ang', 1:'hap', 2:'exc', 3:'sad', 4:'fru', 5:'neu'}
+    labels = {0:'ang', 1:'hap', 2:'sad', 3:'neu'}
+
     enn = emoLSTM(weights_path)
     enn.model.summary()
 
@@ -138,7 +143,7 @@ if __name__ == "__main__":
         ar = AudioRec()
         while True:
             ar.listen("microphone-results.wav")
-            features = extract_features("microphone-results.wav")
+            features = extract_feat("microphone-results.wav")
 
             if features is not None:
                 print ("Extracted features of shape: ", features.shape)
@@ -149,7 +154,7 @@ if __name__ == "__main__":
 
     else:
         wav_path = args["audio"]
-        features = extract_features(wav_path)
+        features = extract_feat(wav_path)
         print ("Extracted features of shape: ", features.shape)
         y_pred = enn.predict(features[None,:])
         pred_class = labels[np.argmax(y_pred, axis=1)[0]]

@@ -1,9 +1,10 @@
 import argparse
 import os
-from audio_features import extract_logmel
 from sklearn.utils import shuffle
 import numpy as np
 
+#TODO: import the correct feature extraction function
+from audio_features import extract_logmel as extract_feat
 
 def parse_args():
     """Returns dictionary containing CLI arguments"""
@@ -50,7 +51,7 @@ def parse_dialog_file(dialog_file_path, x, y):
                 print (wav_path, emotion)
 
                 # extract features and append it to the list
-                features = extract_logmel(wav_path) # shape (M, 40)
+                features = extract_feat(wav_path) # shape (M, 40)
                 if features is not None:
                     x.append(features)
                     y.append(target_emotions[emotion])

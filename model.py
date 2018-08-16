@@ -20,10 +20,11 @@ from sklearn.utils import shuffle
 
 import time
 import os
+import argparse
 
 
 class MeanPool(Layer):
-    """This is a custom class to perform GlobalAveragePooling1D,
+    """This is a custom keras layer to perform GlobalAveragePooling1D,
         but with support for masking.
     """
     def __init__(self, **kwargs):
@@ -61,8 +62,10 @@ class emoLSTM():
     def __init__(self, pre_trained=None):
         if pre_trained is None:
             self.build_model()
+            self.define_callbacks()
         else:
             self.model = load_model(pre_trained)
+            self.define_callbacks()
         
 
     def build_model(self):
@@ -92,6 +95,8 @@ class emoLSTM():
                             metrics=['accuracy'],
                             weighted_metrics=['accuracy'])
 
+
+    def define_callbacks(self):
         # Callbacks: Model snapshotting, early stopping, Learning Rate scheduler
         # self.loss_history = LossHistory()
 
@@ -210,13 +215,23 @@ def pad_sequences(mini_batch):
     return np.dstack(batch).transpose(2,0,1)
 
 
+def parse_args():
+    """Returns dictionary containing CLI arguments"""
+    ap = argparse.ArgumentParser()
+    ap.add_argument("-p", "--data-path", required=True, help="Path to the dataset")
+    args = vars(ap.parse_args())
+    return args
+
+
 if __name__ == "__main__":
     enn = emoLSTM()
     enn.model.summary()
-    x_train = np.load('dataset_four/x_train.npy')
-    y_train = np.load('dataset_four/y_train.npy')
-    x_val = np.load('dataset_four/x_val.npy')
-    y_val = np.load('dataset_four/y_val.npy')
+    args = parse_args()
+    dataset_path = args["data_path"]
+    x_train = np.load(os.path.join(dataset_path, 'x_train.npy'), encoding='bytes')
+    y_train = np.load(os.path.join(dataset_path, 'y_train.npy'), encoding='bytes')
+    x_val = np.load(os.path.join(dataset_path, 'x_val.npy'), encoding='bytes')
+    y_val = np.load(os.path.join(dataset_path, 'y_val.npy'), encoding='bytes')
 
     # compute class weights due to imbalanced data. 
     class_weight = clw.compute_class_weight('balanced', np.unique(y_train), y_train)
