@@ -43,6 +43,7 @@ This section provides detailed information about the code structure and how to t
 * `model_conv_specgram.py` - deprecated. code used to test emotion recognition model using spectrogram features.
 * `model_vggish.py` - deprecated. code used to test emotion recognition model using extracted VGGish embeddings.
 * `process_iemocap.py` - code used for parsing IEMOCAP annotations, loading audio, extracting features and saving the dataset.
+* `test_model.ipynb` - jupyter notebook for interactive testing of realtime application
 
 #### How to test the pre-trained model
 
@@ -76,7 +77,7 @@ The dataset will then be created in the specified output folder.
 ```sh
 $ python model.py -p <DATASET_PATH>
 ```
-The best model will be saved under MODELS directory.
+The best model will be saved under MODELS directory. All models trained so far are in the folder `~/speech-emotion-recognition/models` on AWS instance `deep`.
 
 
 
