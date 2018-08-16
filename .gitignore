@@ -1,8 +1,5 @@
 *.pyc
 *.zip
-dataset/*
-models/*
-data/*
 samples/*
 .DS_Store
 *.png
